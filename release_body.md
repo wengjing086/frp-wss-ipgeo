@@ -1,6 +1,6 @@
-# frp-wss-ipgeo v0.1.0
+# frp-wss-ipgeo v0.2.0
 
-基于 **frp v0.71.1** 的补丁版本，让 frps 直接接收 **WSS（WebSocket over TLS）** 连接，并在后台显示中国大陆客户端的 **真实 IP + 归属地（省 市）+ 运营商**。
+基于 **frp v0.72.0** 的补丁版本，让 frps 直接接收 **WSS（WebSocket over TLS）** 连接，并在后台显示中国大陆客户端的 **真实 IP + 归属地（省 市）+ 运营商**。
 
 ## 核心特性
 - **frps 直收 WSS**：无需在前面挂 nginx，frps 在同端口（bindPort）上自动识别 `GET /~!frp` 的 WSS 流量并升级。frpc 端零改动，配置 `transport.protocol = "wss"` 即可。
@@ -20,9 +20,11 @@
 
 所有二进制均为 `CGO_ENABLED=0` 静态编译，可直接运行，无需额外依赖。
 
+> 旧版 **v0.1.0**（基于 frp v0.71.1）仍保留在 [Releases](https://github.com/wengjing086/frp-wss-ipgeo/releases/tag/v0.1.0)，供需要旧版 frp 的用户使用。
+
 ## 使用方式
 - **直接用预编译二进制**：下载对应平台的 `frps`/`frpc`，按官方文档配置，客户端加一行 `transport.protocol = "wss"`。
-- **自己打补丁编译**：`git clone` 本仓库，参考 `README.md` 与 `apply.sh`，把 `frp-patch/` 下的文件覆盖到官方 frp v0.71.1 源码后 `go build`。
+- **自己打补丁编译**：`git clone` 本仓库，参考 `README.md` 与 `apply.sh`，把 `frp-patch/` 下的文件覆盖到官方 frp v0.72.0 源码后 `go build`。
 
 ## 注意
 - frps 需要能访问外网才能查询 IPv6 归属地（ip138 主源）。

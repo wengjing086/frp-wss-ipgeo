@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 把本仓库的补丁覆盖到一份官方 frp v0.71.1 源码上。
+# 把本仓库的补丁覆盖到一份官方 frp v0.72.0 源码上。
 # 用法: ./apply.sh /path/to/frp-source
 set -euo pipefail
 

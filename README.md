@@ -1,11 +1,20 @@
 # frp-wss-ipgeo
 
-基于 [fatedier/frp](https://github.com/fatedier/frp) **v0.71.1** 的补丁仓库，给 frps 增加两项能力：
+基于 [fatedier/frp](https://github.com/fatedier/frp) **v0.72.0** 的补丁仓库，给 frps 增加两项能力：
 
 1. **frps 直接接收 WSS（WebSocket over TLS）连接** —— 无需在前面再挂一层 nginx 或另一个 frpc 做 TLS 终结。frpc 端只需 `transport.protocol = "wss"`，同端口直连即可。
 2. **后台显示客户端真实 IP 及国内归属地/运营商** —— 在 frps 日志和 Web 控制台（`:7500` / API `/api/v2/clients` 的 `clientIP` 字段）里，国内 IPv4/IPv6 显示为 `IP (省 市 运营商)`，境外与内网地址只显示 IP。
 
-> 本仓库是**补丁**，不是完整 frp 源码。请按下方「使用方法」打到官方 frp v0.71.1 上自行编译，或直接使用 Release 里的预编译二进制。
+> 本仓库是**补丁**，不是完整 frp 源码。请按下方「使用方法」打到官方 frp v0.72.0 上自行编译，或直接使用 Release 里的预编译二进制。
+
+## 版本
+
+| 版本 | 基于 frp | 说明 |
+|------|----------|------|
+| **v0.2.0**（最新） | v0.72.0 | 当前 `main` 分支与最新 Release |
+| v0.1.0 | v0.71.1 | 旧版，仍保留在 [Releases](https://github.com/wengjing086/frp-wss-ipgeo/releases/tag/v0.1.0) 中，供需要旧版 frp 的用户使用 |
+
+补丁改动与核心功能在 v0.71.1 / v0.72.0 上一致（WSS 直连 + 国内 IP 归属地/运营商）。
 
 ## 功能特性
 
@@ -48,7 +57,7 @@ go.mod / go.sum               # 改动：golang.org/x/text 提为直接依赖（
 ```bash
 git clone https://github.com/fatedier/frp.git
 cd frp
-git checkout v0.71.1
+git checkout v0.72.0
 /path/to/frp-wss-ipgeo/apply.sh "$(pwd)"   # 把补丁覆盖进来
 ```
 

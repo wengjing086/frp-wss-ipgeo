@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" font-family="'Microsoft YaHei','PingFang SC','Segoe UI',sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="9" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#475569"/>
+    </marker>
+    <marker id="arrowG" markerWidth="12" markerHeight="12" refX="9" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#16a34a"/>
+    </marker>
+    <marker id="arrowR" markerWidth="12" markerHeight="12" refX="9" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#dc2626"/>
+    </marker>
+  </defs>
+
+  <!-- background -->
+  <rect x="0" y="0" width="1280" height="720" fill="#ffffff"/>
+
+  <!-- title -->
+  <text x="640" y="40" text-anchor="middle" font-size="22" font-weight="700" fill="#0f172a">frps 支持 WSS 的连接分流原理</text>
+  <text x="640" y="66" text-anchor="middle" font-size="13" fill="#475569">frpc(wss) = TLS 握手(0x16) + GET /~!frp 升级 ｜ 补丁在 TLS 终结后补一次"是否 WS 升级"的判断</text>
+
+  <!-- ============ boxes ============ -->
+  <!-- frpc -->
+  <rect x="30" y="270" width="150" height="76" rx="10" fill="#e0f2fe" stroke="#0284c7" stroke-width="2"/>
+  <text x="105" y="300" text-anchor="middle" font-size="15" font-weight="700" fill="#0f172a">frpc 客户端</text>
+  <text x="105" y="322" text-anchor="middle" font-size="13" fill="#0369a1">wss 协议</text>
+
+  <!-- mux -->
+  <rect x="240" y="270" width="170" height="76" rx="10" fill="#e0f2fe" stroke="#0284c7" stroke-width="2"/>
+  <text x="325" y="300" text-anchor="middle" font-size="15" font-weight="700" fill="#0f172a">mux.Mux</text>
+  <text x="325" y="322" text-anchor="middle" font-size="12" fill="#0369a1">按首字节分流</text>
+
+  <!-- websocketListener (明文 ws) -->
+  <rect x="470" y="120" width="225" height="70" rx="10" fill="#f1f5f9" stroke="#64748b" stroke-width="2"/>
+  <text x="582" y="148" text-anchor="middle" font-size="14" font-weight="700" fill="#0f172a">websocketListener</text>
+  <text x="582" y="170" text-anchor="middle" font-size="12" fill="#475569">明文 ws:// (原版支持)</text>
+
+  <!-- tlsListener -->
+  <rect x="470" y="320" width="225" height="70" rx="10" fill="#f1f5f9" stroke="#64748b" stroke-width="2"/>
+  <text x="582" y="348" text-anchor="middle" font-size="14" font-weight="700" fill="#0f172a">tlsListener</text>
+  <text x="582" y="370" text-anchor="middle" font-size="12" fill="#475569">0x16 → TLS 握手</text>
+
+  <!-- decision diamond -->
+  <polygon points="840,384 935,450 840,516 745,450" fill="#fef9c3" stroke="#ca8a04" stroke-width="2"/>
+  <text x="840" y="442" text-anchor="middle" font-size="13" font-weight="700" fill="#713f12">peek 前 11 字节</text>
+  <text x="840" y="462" text-anchor="middle" font-size="13" font-weight="700" fill="#713f12">= GET /~!frp ?</text>
+
+  <!-- wssListener (new) -->
+  <rect x="1040" y="320" width="225" height="84" rx="10" fill="#dcfce7" stroke="#16a34a" stroke-width="2"/>
+  <text x="1152" y="346" text-anchor="middle" font-size="14" font-weight="700" fill="#14532d">wssListener</text>
+  <text x="1152" y="368" text-anchor="middle" font-size="12" fill="#166534">NewWebsocketListener</text>
+  <text x="1152" y="388" text-anchor="middle" font-size="12" font-weight="700" fill="#166534">WS 升级 (新增)</text>
+
+  <!-- frp 控制 -->
+  <rect x="1040" y="130" width="225" height="70" rx="10" fill="#ede9fe" stroke="#7c3aed" stroke-width="2"/>
+  <text x="1152" y="158" text-anchor="middle" font-size="14" font-weight="700" fill="#0f172a">frp 控制</text>
+  <text x="1152" y="180" text-anchor="middle" font-size="12" fill="#5b21b6">yamux + frp msg</text>
+
+  <!-- peekConn 回放 -->
+  <rect x="715" y="600" width="250" height="72" rx="10" fill="#fee2e2" stroke="#dc2626" stroke-width="2"/>
+  <text x="840" y="628" text-anchor="middle" font-size="14" font-weight="700" fill="#7f1d1d">peekConn 回放</text>
+  <text x="840" y="650" text-anchor="middle" font-size="12" fill="#991b1b">→ frp over TLS (原版行为)</text>
+
+  <!-- ============ arrows ============ -->
+  <!-- frpc -> mux -->
+  <line x1="180" y1="308" x2="238" y2="308" stroke="#475569" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- mux -> websocketListener (GET) -->
+  <path d="M410,292 C 450,210 450,180 470,153" fill="none" stroke="#475569" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="442" y="222" font-size="12" font-weight="700" fill="#0369a1">GET /~!frp</text>
+
+  <!-- mux -> tlsListener (0x16) -->
+  <line x1="410" y1="328" x2="468" y2="352" stroke="#475569" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="430" y="318" font-size="12" font-weight="700" fill="#475569">0x16</text>
+
+  <!-- tlsListener -> decision -->
+  <path d="M695,353 C 740,378 720,438 745,448" fill="none" stroke="#475569" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- decision -> wssListener (yes) -->
+  <path d="M935,450 C 990,440 1010,400 1040,360" fill="none" stroke="#16a34a" stroke-width="2.5" marker-end="url(#arrowG)"/>
+  <text x="1010" y="410" font-size="12" font-weight="700" fill="#16a34a">命中</text>
+
+  <!-- decision -> peekConn (no) -->
+  <line x1="840" y1="516" x2="840" y2="598" stroke="#dc2626" stroke-width="2.5" marker-end="url(#arrowR)"/>
+  <text x="852" y="562" font-size="12" font-weight="700" fill="#dc2626">未命中</text>
+
+  <!-- websocketListener -> frp 控制 -->
+  <line x1="695" y1="155" x2="1038" y2="165" stroke="#475569" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- wssListener -> frp 控制 -->
+  <line x1="1152" y1="320" x2="1152" y2="202" stroke="#16a34a" stroke-width="2.5" marker-end="url(#arrowG)"/>
+
+  <!-- ============ legend / note ============ -->
+  <rect x="30" y="600" width="640" height="72" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+  <circle cx="52" cy="624" r="7" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+  <text x="68" y="629" font-size="12" fill="#334155">补丁新增逻辑（命中即走 WSS 升级）</text>
+  <circle cx="52" cy="650" r="7" fill="#fee2e2" stroke="#dc2626" stroke-width="1.5"/>
+  <text x="68" y="655" font-size="12" fill="#334155">未命中：peekConn 回放，走原版 frp over TLS</text>
+  <text x="300" y="624" font-size="12" fill="#334155">frpc 端零改动：仅配 transport.protocol = "wss"</text>
+  <text x="300" y="650" font-size="12" fill="#334155">所有路径最终汇入同一 frp 控制（yamux + msg）</text>
+</svg>

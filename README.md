@@ -17,6 +17,19 @@
   - 仅对中国大陆 IP 追加归属地；境外、内网/保留地址（`127.0.0.1`、`192.168.x`、`10.x`、`172.16-31.x`、`::1`、`fe80::` 等）只显示 IP。
   - 结果内存 + 磁盘缓存（`ipgeo_cache.json`，重启不重查），带节流与限流熔断。
 
+## 工作原理（WSS 连接分流）
+
+frps 在 `bindPort` 上收到连接后，先由 `mux.Mux` 按首字节分流：明文 `GET /~!frp` 走原生的明文 WebSocket 监听；首字节为 `0x16`（TLS 握手）则进入 `tlsListener` 完成 TLS 解密，再 **peek 前 11 字节**：
+
+- **命中** `GET /~!frp` → 交给新增的 `wssListener` 做 WebSocket 升级（绿色路径，补丁新增）；
+- **未命中** → 通过 `peekConn` 把已读字节回放，回到「frp over TLS」的原版行为（红色路径，兼容默认 tcp/tls 客户端）。
+
+两条路径最终都汇入同一套 `frp 控制`（yamux + frp msg）。frpc 端零改动，仅配 `transport.protocol = "wss"` 即可。
+
+![frps 支持 WSS 的连接分流原理](docs/WSS_FRPS_流程图.svg)
+
+> 流程图另存为 `docs/WSS_FRPS_流程图.jpg`（位图版）。
+
 ## 与原版相比改动的文件
 
 ```

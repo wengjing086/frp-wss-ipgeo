@@ -11,7 +11,8 @@
 
 | 版本 | 基于 frp | 说明 |
 |------|----------|------|
-| **v0.2.0**（最新） | v0.72.0 | 当前 `main` 分支与最新 Release |
+| **v0.3.0**（最新） | v0.72.0 | 新增 **CDN 兼容**：任意路径升级 + HTTP 健康响应 + 放开 Origin 校验 |
+| v0.2.0 | v0.72.0 | WSS 直连 + 国内 IP 归属地/运营商 |
 | v0.1.0 | v0.71.1 | 旧版，仍保留在 [Releases](https://github.com/wengjing086/frp-wss-ipgeo/releases/tag/v0.1.0) 中，供需要旧版 frp 的用户使用 |
 
 补丁改动与核心功能在 v0.71.1 / v0.72.0 上一致（WSS 直连 + 国内 IP 归属地/运营商）。
@@ -28,10 +29,11 @@
 
 ## 工作原理（WSS 连接分流）
 
-frps 在 `bindPort` 上收到连接后，先由 `mux.Mux` 按首字节分流：明文 `GET /~!frp` 走原生的明文 WebSocket 监听；首字节为 `0x16`（TLS 握手）则进入 `tlsListener` 完成 TLS 解密，再 **peek 前 11 字节**：
+frps 在 `bindPort` 上收到连接后，先由 `mux.Mux` 按首字节分流：明文的 HTTP 请求（`GET ` / `HEAD`）走 WebSocket 监听；首字节为 `0x16`（TLS 握手）则进入 `tlsListener` 完成 TLS 解密，再读出**完整的请求头**：
 
-- **命中** `GET /~!frp` → 交给新增的 `wssListener` 做 WebSocket 升级（绿色路径，补丁新增）；
-- **未命中** → 通过 `peekConn` 把已读字节回放，回到「frp over TLS」的原版行为（红色路径，兼容默认 tcp/tls 客户端）。
+- **带 `Upgrade: websocket`** → 交给 `wssListener` 做 WebSocket 升级（路径**不限**，`/ws`、`/~!frp` 都行）；
+- **普通 HTTP（无 Upgrade）** → 直接回 `200 OK`（`/`、`/health*`、`/status*`）或 `404`，然后正常关闭；
+- **不像 HTTP** → 通过 `peekConn` 把已读字节回放，回到「frp over TLS」的原版行为（兼容默认 tcp/tls 客户端）。
 
 两条路径最终都汇入同一套 `frp 控制`（yamux + frp msg）。frpc 端零改动，仅配 `transport.protocol = "wss"` 即可。
 
@@ -39,13 +41,29 @@ frps 在 `bindPort` 上收到连接后，先由 `mux.Mux` 按首字节分流：�
 
 > 流程图另存为 `docs/WSS_FRPS_流程图.jpg`（位图版）。
 
+## 放在 CDN 后面（阿里云 ESA / Cloudflare 等）
+
+把 `frps.wengjing.top` 这类域名指向 CDN、让 frpc 连 `443` 时，原版 frp 会**必然失败**，原因是三个独立的问题：
+
+| 现象 | 根因 | 本补丁的处理 |
+|---|---|---|
+| `403 Forbidden`，`Server: ESA` | WAF 把 `/~!frp` 判为可疑路径，**在边缘就拦掉**，请求没到源站 | 服务端不再校验路径，客户端可改用 `/ws` 之类普通路径 |
+| `520 Origin Error` | CDN 回源健康检查打 `GET /`，原版 frps 不认 HTTP 直接断连，边缘判定源站不健康 | 普通 HTTP 请求一律回 `200 ok`，CDN 才会认源站健康 |
+| `403 null origin` | `golang.org/x/net/websocket` 默认校验 `Origin` 头，自研客户端通常不发 | 升级握手不再强制 `Origin` |
+
+配套要求：
+
+- **CDN 回源协议选 HTTP**（源站 `bindPort` 是明文 TCP）。若选 HTTPS，CDN 会用公网证书去校验收源站的自签证书，握手失败。
+- 若坚持不改客户端路径（继续用官方默认 `/~!frp`），需要在 CDN 控制台给该路径加 **WAF 跳过/白名单规则**，否则 403 无法绕过。
+- 官方 Go 版 frpc **没有** `transport.websocket.path` 配置项，路径写死在 `pkg/util/net/websocket.go`；只有自研客户端才能改路径。
+
 ## 与原版相比改动的文件
 
 ```
 server/wss_listener.go        # 新增：WSS channel 监听器 + peek 回放
-server/service.go             # 改动：TLS 握手后 peek `GET /~!frp` 转交 WSS 升级；接入 ipgeo
+server/service.go             # 改动：TLS 后读完整请求头分流；HTTP 兜底；接入 ipgeo
 server/http/controller.go     # 改动：ClientIP 字段经 ipgeo.Format 处理
-pkg/util/net/websocket.go     # 改动：升级前截获真实 RemoteAddr
+pkg/util/net/websocket.go     # 改动：任意路径升级、放开 Origin、HTTP 健康响应、真实 RemoteAddr
 pkg/util/ipgeo/               # 新增：在线归属地查询包（6 个文件）
 go.mod / go.sum               # 改动：golang.org/x/text 提为直接依赖（GBK 解码用）
 ```

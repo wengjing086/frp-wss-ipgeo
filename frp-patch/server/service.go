@@ -289,15 +289,25 @@ func NewService(cfg *v1.ServerConfig) (*Service, error) {
 	}
 
 	// Listen for accepting connections from client using websocket protocol.
-	websocketPrefix := []byte("GET " + netpkg.FrpWebsocketPath)
-	websocketLn := svr.muxer.Listen(0, uint32(len(websocketPrefix)), func(data []byte) bool {
-		return bytes.Equal(data, websocketPrefix)
+	//
+	// 这里原来是「只认 `GET /~!frp`」的精确匹配，改成「按 HTTP 方法」分流：
+	//
+	//   * CDN / WAF 会把 `/~!frp` 判为可疑路径直接回 403，路径必须可换；
+	//   * CDN 回源的健康检查（`GET /`、`HEAD /`）也走同一条 TCP 连接进来，
+	//     必须能得到一个正常的 HTTP 响应，否则边缘节点报 520 Origin Error。
+	//
+	// 真正的「升级还是普通 HTTP」判断放在监听器的 handler 里，见
+	// pkg/util/net/websocket.go 的 isWebsocketRequest / writeHTTPFallback。
+	httpMethodPrefix := []byte("GET ")
+	headMethodPrefix := []byte("HEAD")
+	websocketLn := svr.muxer.Listen(0, uint32(len(httpMethodPrefix)), func(data []byte) bool {
+		return bytes.Equal(data, httpMethodPrefix) || bytes.Equal(data, headMethodPrefix)
 	})
 	svr.websocketListener = netpkg.NewWebsocketListener(websocketLn)
 
 	// WSS: accept WebSocket-over-TLS connections directly on the same bindPort
 	// (no external TLS-terminating proxy required). After the TLS handshake in
-	// HandleListener the trailing "GET /~!frp" upgrade is detected and handed
+	// HandleListener the trailing WebSocket upgrade is detected and handed
 	// off to wssWebsocketListener, which performs the WebSocket upgrade.
 	svr.wssListener = newWSSListener()
 	svr.wssWebsocketListener = netpkg.NewWebsocketListener(svr.wssListener)
@@ -817,28 +827,31 @@ func (svr *Service) HandleListener(l net.Listener, internal bool) {
 			}
 			log.Tracef("check TLS connection success, isTLS: %v custom: %v internal: %v", isTLS, custom, internal)
 
-			// WSS detection: frpc "wss" protocol performs a TLS handshake first,
-			// then sends a "GET /~!frp" WebSocket upgrade request. After the TLS
-			// handshake, inspect the first bytes; if they are the WS upgrade
-			// request, hand the connection off to the wss listener which performs
-			// the WebSocket upgrade. Otherwise replay the bytes for normal frp.
+			// 握手后判断：WebSocket 升级 / 普通 HTTP / 原生 frp 字节流。
+			//
+			// 原实现只 peek 固定的 11 字节并与 `GET /~!frp` 比较，带来两个
+			// CDN 场景的致命问题：
+			//   1) 路径不可改 —— WAF 拦 `/~!frp` 就永远 403；
+			//   2) 普通 HTTP 完全无响应 —— CDN 回源健康检查拿不到响应头，
+			//      边缘节点直接对外回 520 Origin Error。
+			// 现在改成读到请求头结束再判断，非 HTTP 的连接最多多读 4 个字节
+			// （looksLikeHTTPMethod 立即返回），对原版 frp 透明。
 			if isTLS {
-				prefix := []byte("GET " + netpkg.FrpWebsocketPath)
-				peekBuf := make([]byte, len(prefix))
-				_ = c.SetReadDeadline(time.Now().Add(connReadTimeout))
-				if _, readErr := io.ReadFull(c, peekBuf); readErr != nil {
-					log.Warnf("wss peek error: %v", readErr)
-					c.Close()
+				head, readErr := netpkg.ReadHTTPHead(c, connReadTimeout)
+				switch {
+				case readErr == nil && netpkg.IsWebsocketUpgrade(head):
+					// WebSocket 升级 -> 交给 wss 监听器完成握手（路径无关）。
+					svr.wssListener.acceptCh <- &peekConn{Conn: c, buf: bytes.NewReader(head)}
 					continue
-				}
-				_ = c.SetReadDeadline(time.Time{})
-				if bytes.Equal(peekBuf, prefix) {
-					// HTTP/1.1 WebSocket upgrade -> hand off to the wss listener.
-					svr.wssListener.acceptCh <- &peekConn{Conn: c, buf: bytes.NewReader(peekBuf)}
+				case readErr == nil && netpkg.IsHTTPRequest(head):
+					// 普通 HTTP（CDN 回源健康检查走这里）：回 200 再关，否则 520。
+					netpkg.WriteHTTPFallbackToConn(c, head)
+					_ = c.Close()
 					continue
+				default:
+					// 原生 frp over TLS：已读字节原样回放，不能丢。
+					c = &peekConn{Conn: c, buf: bytes.NewReader(head)}
 				}
-				// Not a WebSocket upgrade: replay the peeked bytes for normal frp over TLS.
-				c = &peekConn{Conn: c, buf: bytes.NewReader(peekBuf)}
 			}
 		}
 
